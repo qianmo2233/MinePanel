@@ -9,7 +9,6 @@ use app\response\SuccessResponse;
 use app\util\Encryption;
 use app\util\UUID;
 use app\validate\UserValidate;
-use thans\jwt\exception\JWTException;
 use thans\jwt\facade\JWTAuth;
 use think\db\exception\DataNotFoundException;
 use think\db\exception\DbException;
