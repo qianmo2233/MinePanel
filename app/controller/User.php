@@ -6,6 +6,7 @@ namespace app\controller;
 use app\modal\UserModal;
 use app\response\ErrorResponse;
 use app\response\SuccessResponse;
+use app\util\Encryption;
 use app\util\UUID;
 use app\validate\UserValidate;
 use thans\jwt\exception\JWTException;
@@ -13,7 +14,6 @@ use thans\jwt\facade\JWTAuth;
 use think\db\exception\DataNotFoundException;
 use think\db\exception\DbException;
 use think\db\exception\ModelNotFoundException;
-use think\exception\ValidateException;
 use think\Request;
 use think\Response;
 
@@ -26,20 +26,14 @@ class User
      */
     public function index() : Response
     {
-        $failure = new ErrorResponse();
-        try {
-            $payload = JWTAuth::auth();
-        } catch (JWTException $e) {
-            return json($failure->build(401, 'Unauthorized: ' . $e->getMessage()));
-        }
-        $uuid = $payload['uuid']->getValue();
+        $uuid = JWTAuth::getPayload()['uuid']->getValue();
         $modal = new UserModal();
         $user = $modal->findOrEmpty($uuid);
-        if ($user->isEmpty() || $user['admin'] !== 1) return json($failure->build(403, 'Access Denied'));
+        if ($user->isEmpty() || $user['admin'] !== 1) return json((new ErrorResponse)->build(403, 'Access Denied'));
         try {
             return json($modal->select());
         } catch (DataNotFoundException | ModelNotFoundException | DbException $e) {
-            return json($failure->build(500, 'Query Error: ' . $e));
+            return json((new ErrorResponse)->build(500, 'Query Error: ' . $e));
         }
     }
 
@@ -51,28 +45,18 @@ class User
      */
     public function save(Request $request) : Response
     {
-        $failure = new ErrorResponse();
-        $success = new SuccessResponse();
-        try {
-            $payload = JWTAuth::auth();
-        } catch (JWTException $e) {
-            return json($failure->build(401, 'Unauthorized: ' . $e->getMessage()));
-        }
-        $uuid = $payload['uuid']->getValue();
+        $uuid = JWTAuth::getPayload()['uuid']->getValue();
         $modal = new UserModal();
         $user = $modal->findOrEmpty($uuid);
-        if ($user->isEmpty() || $user['admin'] !== 1) return json($failure->build(403, 'Access Denied'));
+        if ($user->isEmpty() || $user['admin'] !== 1) return json((new ErrorResponse)->build(403, 'Access Denied'));
         $params = $request->param();
-        try {
-            validate(UserValidate::class)->check($params);
-        } catch (ValidateException $e) {
-            return json($failure->build("400", "Bad Request: " . $e->getMessage()));
-        }
-        if (!$modal->where('username', $request['username'])->findOrEmpty()->isEmpty()) return json($failure->build('202', 'User already exists'));
+        validate(UserValidate::class)->check($params);
+        if (!$modal->where('username', $request['username'])->findOrEmpty()->isEmpty()) return json((new ErrorResponse)->build('202', 'User already exists'));
         $uuid = UUID::create();
         $params['uuid'] = $uuid;
+        $params['password'] = Encryption::encrypt($params['password'], true);
         $modal->save($params);
-        return json($success->build("User Added Successfully"));
+        return json((new SuccessResponse)->build("User Added Successfully"));
     }
 
     /**
@@ -83,16 +67,19 @@ class User
      */
     public function read(Request $request) : Response
     {
-        $failure = new ErrorResponse();
-        try {
-            $payload = JWTAuth::auth();
-        } catch (JWTException $e) {
-            return json($failure->build(401, 'Unauthorized: ' . $e->getMessage()));
-        }
-        $uuid = $payload['uuid']->getValue();
+        $uuid = JWTAuth::getPayload()['uuid']->getValue();
         $modal = new UserModal();
         $user = $modal->findOrEmpty($uuid);
+        if ($user->isEmpty()) return json((new ErrorResponse)->build(403, 'Access Denied'));
         if ($request['uuid']) {
+            if ($user['admin'] !== 1) return json((new ErrorResponse)->build(403, 'Access Denied'));
+            try {
+                return json($modal->findOrFail($request['uuid']));
+            } catch (DataNotFoundException | ModelNotFoundException $e) {
+                return json((new ErrorResponse)->build(404, 'User Not Fount'));
+            }
+        } else {
+            return json((new ErrorResponse)->build('400', 'Bad Request: UUID is required'));
         }
     }
 
@@ -100,22 +87,48 @@ class User
      * 保存更新的资源
      *
      * @param Request $request
-     * @param  int  $id
      * @return Response
      */
-    public function update(Request $request, $id)
+    public function update(Request $request) : Response
     {
-        //
+        $uuid = JWTAuth::getPayload()['uuid']->getValue();
+        $modal = new UserModal();
+        $user = $modal->findOrEmpty($uuid);
+        if ($user->isEmpty()) return json((new ErrorResponse)->build(403, 'Access Denied'));
+        if (!$request['uuid']) return json((new ErrorResponse)->build('400', 'Bad Request: UUID is required'));
+        if ($uuid === $request['uuid']) {
+            if ($request['username']) $user->username = $request['username'];
+            if ($request['password']) $user->password = $request['password'];
+            $user->save();
+        } else {
+            if ($user['admin'] !== 1) return json((new ErrorResponse)->build(403, 'Access Denied'));
+            $target = $modal->findOrEmpty($uuid);
+            if ($target->isEmpty()) return json((new ErrorResponse)->build(404, 'User not found'));
+            if ($request['username']) $target->username = $request['username'];
+            if ($request['password']) $target->password = $request['password'];
+            if ($request['status']) $target->status = $request['status'];
+            if ($request['admin']) $target->status = $request['admin'];
+            $target->save();
+        }
+        return json((new SuccessResponse)->build('User updated successfully'));
     }
 
     /**
      * 删除指定资源
      *
-     * @param  int  $id
+     * @param Request $request
      * @return Response
      */
-    public function delete($id)
+    public function delete(Request $request) :Response
     {
-        //
+        $uuid = JWTAuth::getPayload()['uuid']->getValue();
+        $modal = new UserModal();
+        $user = $modal->findOrEmpty($uuid);
+        if ($user->isEmpty() || $user->admin === 0) return json((new ErrorResponse)->build(403, 'Access Denied'));
+        if (!$request['uuid']) return json((new ErrorResponse)->build('400', 'Bad Request: UUID is required'));
+        $target = $modal->findOrEmpty($uuid);
+        if ($target->isEmpty()) return json((new ErrorResponse)->build(404, 'User not found'));
+        $target->delete();
+        return json((new SuccessResponse)->build('User deleted successfully'));
     }
 }

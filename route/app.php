@@ -1,5 +1,7 @@
 <?php
+
+use thans\jwt\middleware\JWTAuthAndRefresh;
 use think\facade\Route;
 
-Route::get('think', function () {return 'hello,ThinkPHP6!';});
-//Route::get('hello/:name', 'index/hello');
+Route::resource('user', 'User')->middleware(JWTAuthAndRefresh::class);
+Route::rule('token/get', 'Token/get');

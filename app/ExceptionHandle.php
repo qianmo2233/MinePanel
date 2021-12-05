@@ -1,6 +1,8 @@
 <?php
 namespace app;
 
+use app\response\ErrorResponse;
+use thans\jwt\exception\JWTException;
 use think\db\exception\DataNotFoundException;
 use think\db\exception\ModelNotFoundException;
 use think\exception\Handle;
@@ -25,6 +27,7 @@ class ExceptionHandle extends Handle
         ModelNotFoundException::class,
         DataNotFoundException::class,
         ValidateException::class,
+        JWTException::class
     ];
 
     /**
@@ -51,8 +54,6 @@ class ExceptionHandle extends Handle
     public function render($request, Throwable $e): Response
     {
         // 添加自定义异常处理机制
-
-        // 其他错误交给系统处理
-        return parent::render($request, $e);
+        return json((new ErrorResponse)->build(201, $e->getMessage()));
     }
 }

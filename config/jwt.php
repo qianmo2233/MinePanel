@@ -14,7 +14,7 @@ return [
     //JWT hashing algorithm
     'algo'        => env('JWT_ALGO', 'HS256'),
     //token获取方式，数组靠前值优先
-    'token_mode'    => ['header', 'cookie', 'param'],
+    'token_mode'    => ['header'],
     //黑名单后有效期
     'blacklist_grace_period' => env('BLACKLIST_GRACE_PERIOD', 10),
     'blacklist_storage' => thans\jwt\provider\storage\Tp5::class,
